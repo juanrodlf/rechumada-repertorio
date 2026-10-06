@@ -227,7 +227,10 @@ async function saveCurrentSetlist() {
     try {
       const path = `setlists/${setlistName}.json`;
       const jsonStr = JSON.stringify(setlistData, null, 2);
-      const contentEncoded = btoa(unescape(encodeURIComponent(jsonStr)));
+      const utf8Bytes = new TextEncoder().encode(jsonStr);
+      let binaryStr = '';
+      utf8Bytes.forEach(b => { binaryStr += String.fromCharCode(b); });
+      const contentEncoded = btoa(binaryStr);
       const url = `https://api.github.com/repos/${AppState.ghConfig.owner}/${AppState.ghConfig.repo}/contents/${path}`;
 
       let sha = null;
@@ -451,7 +454,10 @@ async function saveSongToGitHub() {
   try {
     const path = `canciones/${songId}.json`;
     const jsonString = JSON.stringify(songData, null, 2);
-    const contentEncoded = btoa(unescape(encodeURIComponent(jsonString)));
+    const utf8Bytes = new TextEncoder().encode(jsonString);
+    let binaryStr = '';
+    utf8Bytes.forEach(b => { binaryStr += String.fromCharCode(b); });
+    const contentEncoded = btoa(binaryStr);
 
     const url = `https://api.github.com/repos/${AppState.ghConfig.owner}/${AppState.ghConfig.repo}/contents/${path}`;
     
@@ -498,7 +504,9 @@ async function saveSongToGitHub() {
 // -------------------------------------------------------------
 function cleanPdfText(str) {
   if (!str) return '';
-  return str
+  let out = '';
+  // Normalizar caracteres tipográficos y flechas a equivalentes estándar
+  const replaced = str
     .replace(/[“”""]/g, '"')
     .replace(/[’']/g, "'")
     .replace(/[—–]/g, '-')
@@ -506,18 +514,30 @@ function cleanPdfText(str) {
     .replace(/[↑▲]/g, '^')
     .replace(/[↓▼]/g, 'v')
     .replace(/[←◄]/g, '<')
-    .replace(/[→►]/g, '>')
-    .replace(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g, '');
+    .replace(/[→►]/g, '>');
+
+  // Filtrado seguro por códigos numéricos (WinAnsi / Latin-1)
+  for (let i = 0; i < replaced.length; i++) {
+    const code = replaced.charCodeAt(i);
+    // Salto de línea, retorno de carro, tabulación
+    if (code === 10 || code === 13 || code === 9) {
+      out += replaced[i];
+    }
+    // Caracteres imprimibles ASCII (32-126) y Latin-1 estándar (160-255: á, é, í, ó, ú, ñ, ¿, ¡, etc.)
+    else if ((code >= 32 && code <= 126) || (code >= 160 && code <= 255)) {
+      out += replaced[i];
+    }
+  }
+  return out;
 }
 
-// Detección exhaustiva de acordes (incluye notación española DO/RE/MI..., sostenidos, bemoles, 7, m, sus, +7)
+// Detección de acordes (inglés y español: C, D, G, DO, RE, MI, FA#7, SIm, +7, etc.)
 function isChordLine(str) {
   if (!str) return false;
   const trimmed = str.trim();
   if (trimmed === '') return false;
-  if (/^\[.*\]$/.test(trimmed)) return false; // Encabezados tipo [Intro], [Estribillo]
+  if (/^\[.*\]$/.test(trimmed)) return false;
 
-  // Tokens de acordes anglosajones y latinos
   const chordPattern = /^(?:[A-G]|DO|RE|MI|FA|SOL|LA|SI)(?:[b#])?(?:m|min|maj|dim|aug|sus|[0-9]|\+[0-9]|\/[A-G]|\/[a-g])*$/i;
   const tokens = trimmed.split(/[\s\-\|\(\)\*\:\,]+/).filter(t => t.length > 0);
 
@@ -530,7 +550,6 @@ function isChordLine(str) {
     }
   }
 
-  // Si al menos el 70% de las palabras son acordes, es una línea de acordes
   return (chordCount / tokens.length) >= 0.7;
 }
 
@@ -562,8 +581,8 @@ async function generatePDF() {
 
     const PAGE_WIDTH = 595.28;
     const PAGE_HEIGHT = 841.89;
-    const MARGIN_BOTTOM = 38; // Límite inferior maximizado
-    const LINE_HEIGHT = 13.0; // Espaciado compacto y legible
+    const MARGIN_BOTTOM = 38;
+    const LINE_HEIGHT = 13.0;
     const FONT_SIZE = 9.5;
 
     // 1. Página inicial de Índice (Pág. 1)
@@ -670,11 +689,10 @@ async function generatePDF() {
       return { page, currentY: PAGE_HEIGHT - 85 };
     }
 
-    // 2. Renderizado de cada canción
+    // 2. Renderizado continuo de cada canción
     for (let sIdx = 0; sIdx < AppState.setlist.length; sIdx++) {
       const song = AppState.setlist[sIdx];
 
-      // Unificar todo el texto de la canción sin saltos artificiales heredados
       let rawText = '';
       if (song.pages && song.pages.length > 0) {
         rawText = song.pages.map(p => p.content || '').join('\n');
@@ -692,13 +710,11 @@ async function generatePDF() {
       while (i < allLines.length) {
         const line = allLines[i];
 
-        // Omitir líneas vacías al principio de una hoja
         if (line.trim() === '' && currentY >= PAGE_HEIGHT - 90) {
           i++;
           continue;
         }
 
-        // Si el usuario metió explícitamente una marca manual, salta de página
         if (/^---(?:\s*SALTO MANUAL\s*)?---$/i.test(line.trim())) {
           const next = createSongPage(sIdx, song, true);
           currentPage = next.page;
@@ -709,7 +725,6 @@ async function generatePDF() {
 
         const isChord = isChordLine(line);
 
-        // Comprobar si la siguiente línea es la frase de letra correspondiente
         let nextLineIsLyric = false;
         let nextLine = null;
         if (isChord && i + 1 < allLines.length) {
@@ -719,16 +734,13 @@ async function generatePDF() {
           }
         }
 
-        // Si es una línea de acordes con su letra asociada:
         if (isChord && nextLineIsLyric) {
-          // Si no caben las dos juntas en el espacio que queda, saltan ambas a la siguiente página
           if (currentY - (2 * LINE_HEIGHT) < MARGIN_BOTTOM) {
             const next = createSongPage(sIdx, song, true);
             currentPage = next.page;
             currentY = next.currentY;
           }
 
-          // Imprimir acordes
           currentPage.drawText(cleanPdfText(line), {
             x: 50,
             y: currentY,
@@ -738,7 +750,6 @@ async function generatePDF() {
           });
           currentY -= LINE_HEIGHT;
 
-          // Imprimir letra inmediatamente después
           currentPage.drawText(cleanPdfText(nextLine), {
             x: 50,
             y: currentY,
@@ -748,11 +759,10 @@ async function generatePDF() {
           });
           currentY -= LINE_HEIGHT;
 
-          i += 2; // Avanzar ambas líneas procesadas juntas
+          i += 2;
           continue;
         }
 
-        // Línea individual (letra suelta, espacio o cabecera de sección):
         if (currentY - LINE_HEIGHT < MARGIN_BOTTOM) {
           const next = createSongPage(sIdx, song, true);
           currentPage = next.page;
@@ -780,7 +790,7 @@ async function generatePDF() {
       });
     }
 
-    // 3. Escribir enlaces clicables en la página 1 de Índice
+    // 3. Escribir enlaces clicables en el Índice
     let indexY = PAGE_HEIGHT - 120;
     const indexAnnots = [];
 
