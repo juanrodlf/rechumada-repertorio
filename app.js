@@ -83,7 +83,6 @@ async function loadLibrary() {
     }
   }
 
-  // Si no hay configuración o falla la llamada, se cargan temas de muestra
   AppState.songs = getFallbackSongs();
   renderLibrary();
 }
@@ -154,15 +153,12 @@ function renderSetlist() {
   container.innerHTML = '';
 
   let totalMin = 0;
-  let totalPages = 0;
 
   if (AppState.setlist.length === 0) {
     container.innerHTML = `<div class="empty-state">El repertorio está vacío. Añade canciones de la biblioteca.</div>`;
   } else {
     AppState.setlist.forEach((song, idx) => {
       totalMin += song.duration_min || 3.5;
-      const songPages = (song.pages && song.pages.length) ? song.pages.length : 1;
-      totalPages += songPages;
 
       const prevCapo = idx > 0 ? AppState.setlist[idx - 1].capo : null;
       const capoChanged = idx > 0 && song.capo !== prevCapo;
@@ -176,7 +172,6 @@ function renderSetlist() {
           <div class="song-meta">
             <span>${song.artist}</span>
             ${song.capo > 0 ? `<span class="capo-tag">Capo ${song.capo}</span>` : '<span>Sin Capo</span>'}
-            <span>• ${songPages} pág.</span>
           </div>
         </div>
         <div class="setlist-row-actions">
@@ -191,7 +186,7 @@ function renderSetlist() {
 
   document.getElementById('stat-songs').textContent = `${AppState.setlist.length} temas`;
   document.getElementById('stat-duration').textContent = `~${Math.round(totalMin)} min`;
-  document.getElementById('stat-pages').textContent = `${totalPages + (totalPages > 0 ? 1 : 0)} págs. PDF`;
+  document.getElementById('stat-pages').textContent = `PDF Dinámico`;
 }
 
 // Configuración de GitHub
@@ -247,6 +242,7 @@ async function saveSongToGitHub() {
     return;
   }
 
+  // Si el usuario introduce saltos manuales se respetan, de lo contrario se guarda en un solo bloque
   const rawPages = content.split(/---(?:SALTO DE PÁGINA)?---/i);
   const pages = rawPages.map((pg, i) => ({
     page_num: i + 1,
@@ -314,7 +310,7 @@ async function saveSongToGitHub() {
   }
 }
 
-// Mantiene tildes, eñes, diéresis y signos de apertura; reemplaza solo caracteres Unicode incompatibles
+// Filtra caracteres fuera de WinAnsi / Latin-1 pero conserva tildes, eñes y signos
 function cleanPdfText(str) {
   if (!str) return '';
   return str
@@ -326,11 +322,10 @@ function cleanPdfText(str) {
     .replace(/[↓▼]/g, 'v')
     .replace(/[←◄]/g, '<')
     .replace(/[→►]/g, '>')
-    // Conserva caracteres estándar imprimibles ASCII y Latin-1 (tildes, eñes, diéresis, ¿, ¡)
     .replace(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g, '');
 }
 
-// Motor de generación de PDF con enlaces clicables
+// MOTOR PDF: Paginación automática continua con vínculos internos clicables
 async function generatePDF() {
   const btn = document.getElementById('btn-generate-pdf');
 
@@ -340,13 +335,13 @@ async function generatePDF() {
   }
 
   if (typeof PDFLib === 'undefined') {
-    alert('Error: La librería pdf-lib no se ha cargado. Revisa tu conexión a internet o el script en index.html.');
+    alert('Error: La librería pdf-lib no se ha cargado.');
     return;
   }
 
   try {
     btn.disabled = true;
-    btn.textContent = '⏳ Creando páginas del PDF...';
+    btn.textContent = '⏳ Paginando y maquetando PDF...';
 
     const { PDFDocument, rgb, StandardFonts } = PDFLib;
     const pdfDoc = await PDFDocument.create();
@@ -358,8 +353,11 @@ async function generatePDF() {
 
     const PAGE_WIDTH = 595.28;
     const PAGE_HEIGHT = 841.89;
+    const MARGIN_BOTTOM = 45;
+    const LINE_HEIGHT = 13.5;
+    const FONT_SIZE = 9.5;
 
-    // 1. Página de Índice (Pág. 1)
+    // 1. Crear página inicial de Índice (Página 1)
     const indexPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
     const indexPageRef = indexPage.ref;
 
@@ -391,109 +389,125 @@ async function generatePDF() {
 
     const songTargets = [];
 
-    // 2. Renderizar canciones
+    // Función auxiliar para crear y maquetar una nueva página de canción
+    function createSongPage(sIdx, song, isContinued = false) {
+      const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      
+      const songTitleClean = cleanPdfText(`${sIdx + 1}. ${song.title}${isContinued ? ' (cont.)' : ''}`);
+      const artistClean = cleanPdfText(` - ${song.artist}`);
+
+      page.drawText(songTitleClean, {
+        x: 50,
+        y: PAGE_HEIGHT - 45,
+        size: 14,
+        font: fontBold,
+        color: rgb(0.1, 0.1, 0.1)
+      });
+
+      const titleWidth = fontBold.widthOfTextAtSize(songTitleClean + ' ', 14);
+      page.drawText(artistClean, {
+        x: 50 + titleWidth,
+        y: PAGE_HEIGHT - 45,
+        size: 12,
+        font: fontRegular,
+        color: rgb(0.4, 0.4, 0.4)
+      });
+
+      let meta = song.capo > 0 ? `CAPO ${song.capo}` : `SIN CAPO`;
+      if (song.notes) meta += ` | ${cleanPdfText(song.notes)}`;
+      page.drawText(meta, {
+        x: 50,
+        y: PAGE_HEIGHT - 62,
+        size: 9,
+        font: fontBold,
+        color: rgb(0.8, 0.4, 0.1)
+      });
+
+      // Botón táctil para volver al índice
+      const returnText = '< INDICE >';
+      const returnX = PAGE_WIDTH - 110;
+      const returnY = PAGE_HEIGHT - 52;
+      page.drawText(returnText, {
+        x: returnX,
+        y: returnY,
+        size: 10,
+        font: fontBold,
+        color: rgb(0.2, 0.4, 0.8)
+      });
+
+      try {
+        const backLink = pdfDoc.context.obj({
+          Type: 'Annot',
+          Subtype: 'Link',
+          Rect: [returnX - 4, returnY - 4, returnX + 60, returnY + 12],
+          Border: [0, 0, 0],
+          A: {
+            Type: 'Action',
+            S: 'GoTo',
+            D: [indexPageRef, 'XYZ', null, null, null]
+          }
+        });
+        page.node.set(PDFLib.PDFName.of('Annots'), pdfDoc.context.obj([backLink]));
+      } catch (linkErr) {
+        console.warn('Vínculo al índice omitido:', linkErr);
+      }
+
+      // Pie de página
+      page.drawText(cleanPdfText(`Pág. ${pdfDoc.getPageCount()} | Rechumada`), {
+        x: PAGE_WIDTH - 140,
+        y: 22,
+        size: 8,
+        font: fontRegular,
+        color: rgb(0.6, 0.6, 0.6)
+      });
+
+      return { page, startY: PAGE_HEIGHT - 85 };
+    }
+
+    // 2. Renderizado con paginación automática continua
     for (let sIdx = 0; sIdx < AppState.setlist.length; sIdx++) {
       const song = AppState.setlist[sIdx];
-      const pagesData = (song.pages && song.pages.length > 0)
+      const blocks = (song.pages && song.pages.length > 0)
         ? song.pages
         : [{ page_num: 1, content: 'Sin contenido disponible' }];
 
       let firstPageRef = null;
-      const firstPageNum = pdfDoc.getPageCount() + 1;
+      let firstPageNum = 0;
 
-      for (let pIdx = 0; pIdx < pagesData.length; pIdx++) {
-        const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-        if (pIdx === 0) firstPageRef = page.ref;
+      for (let bIdx = 0; bIdx < blocks.length; bIdx++) {
+        const rawContent = blocks[bIdx].content || '';
+        const lines = rawContent.split('\n');
 
-        const songTitleClean = cleanPdfText(`${sIdx + 1}. ${song.title}`);
-        const artistClean = cleanPdfText(` - ${song.artist}`);
+        let isCont = bIdx > 0;
+        let { page: currentPage, startY: currentY } = createSongPage(sIdx, song, isCont);
 
-        page.drawText(songTitleClean, {
-          x: 50,
-          y: PAGE_HEIGHT - 45,
-          size: 14,
-          font: fontBold,
-          color: rgb(0.1, 0.1, 0.1)
-        });
-
-        const titleWidth = fontBold.widthOfTextAtSize(songTitleClean + ' ', 14);
-        page.drawText(artistClean, {
-          x: 50 + titleWidth,
-          y: PAGE_HEIGHT - 45,
-          size: 12,
-          font: fontRegular,
-          color: rgb(0.4, 0.4, 0.4)
-        });
-
-        let meta = song.capo > 0 ? `CAPO ${song.capo}` : `SIN CAPO`;
-        if (song.notes) meta += ` | ${cleanPdfText(song.notes)}`;
-        page.drawText(meta, {
-          x: 50,
-          y: PAGE_HEIGHT - 62,
-          size: 9,
-          font: fontBold,
-          color: rgb(0.8, 0.4, 0.1)
-        });
-
-        // Botón [< INDICE >] para regresar a la página 1
-        const returnText = '< INDICE >';
-        const returnX = PAGE_WIDTH - 110;
-        const returnY = PAGE_HEIGHT - 52;
-        page.drawText(returnText, {
-          x: returnX,
-          y: returnY,
-          size: 10,
-          font: fontBold,
-          color: rgb(0.2, 0.4, 0.8)
-        });
-
-        try {
-          const backLink = pdfDoc.context.obj({
-            Type: 'Annot',
-            Subtype: 'Link',
-            Rect: [returnX - 4, returnY - 4, returnX + 60, returnY + 12],
-            Border: [0, 0, 0],
-            A: {
-              Type: 'Action',
-              S: 'GoTo',
-              D: [indexPageRef, 'XYZ', null, null, null]
-            }
-          });
-          page.node.set(PDFLib.PDFName.of('Annots'), pdfDoc.context.obj([backLink]));
-        } catch (linkErr) {
-          console.warn('Enlace al índice no insertado:', linkErr);
+        if (bIdx === 0) {
+          firstPageRef = currentPage.ref;
+          firstPageNum = pdfDoc.getPageCount();
         }
 
-        // Líneas de contenido
-        const rawContent = pagesData[pIdx].content || '';
-        const lines = rawContent.split('\n');
-        let textY = PAGE_HEIGHT - 85;
-        const fontSize = 9.5;
-        const lineHeight = 13.5;
-
         for (const line of lines) {
-          if (textY < 40) break;
+          // Si la siguiente línea excede el margen inferior, se añade automáticamente otra página
+          if (currentY - LINE_HEIGHT < MARGIN_BOTTOM) {
+            const next = createSongPage(sIdx, song, true);
+            currentPage = next.page;
+            currentY = next.startY;
+          }
+
           const sanitizedLine = cleanPdfText(line);
           const trimmed = sanitizedLine.trim();
           const isChord = /^[A-G][b#]?(?:m|maj|min|dim|aug|sus|[0-9])*(?:\s+[A-G][b#]?(?:m|maj|min|dim|aug|sus|[0-9])*)*\s*$/.test(trimmed);
 
-          page.drawText(sanitizedLine, {
+          currentPage.drawText(sanitizedLine, {
             x: 50,
-            y: textY,
-            size: fontSize,
+            y: currentY,
+            size: FONT_SIZE,
             font: isChord ? fontMonoBold : fontMono,
             color: isChord ? rgb(0.1, 0.45, 0.85) : rgb(0.15, 0.15, 0.15)
           });
-          textY -= lineHeight;
-        }
 
-        page.drawText(cleanPdfText(`Pág. ${pdfDoc.getPageCount()} | Rechumada`), {
-          x: PAGE_WIDTH - 140,
-          y: 22,
-          size: 8,
-          font: fontRegular,
-          color: rgb(0.6, 0.6, 0.6)
-        });
+          currentY -= LINE_HEIGHT;
+        }
       }
 
       songTargets.push({
@@ -505,7 +519,7 @@ async function generatePDF() {
       });
     }
 
-    // 3. Escribir enlaces en el Índice
+    // 3. Escribir enlaces clicables en la página 1 de Índice
     let indexY = PAGE_HEIGHT - 120;
     const indexAnnots = [];
 
@@ -581,32 +595,17 @@ async function generatePDF() {
 function getFallbackSongs() {
   return [
     {
-      id: "en-algun-lugar",
-      title: "EN ALGÚN LUGAR",
-      artist: "DUNCAN DHU",
+      id: "ejemplo-1",
+      title: "CANCIÓN DE PRUEBA 1",
+      artist: "ARTISTA PRUEBA",
       capo: 0,
       notes: "",
       duration_min: 3.5,
-      tags: ["Pop/Rock 80s-90s"],
+      tags: ["Pop/Rock"],
       pages: [
         {
           page_num: 1,
-          content: "INTRO [Em G D] x 2\n[Em Bm C G D Em Bm C]\n[G D Am C] x 2\n\nEm          G  D   Em    G D Em\nEn algún lugar de un gran país\nEm          G  D   Em    G   D\nolvidaron construir\n            G               D\nun lugar donde no queme el sol\n         G                 Em    G D Em\ny al nacer no haya que morir\n\nBm             C       G D Em\nY en la sombra mueren genios sin saber\nBm             C\nde su magia concedida sin pedirlo\nG\nmucho tiempo antes de nacer"
-        }
-      ]
-    },
-    {
-      id: "dejame",
-      title: "DÉJAME",
-      artist: "LOS SECRETOS",
-      capo: 0,
-      notes: "",
-      duration_min: 3.5,
-      tags: ["Pop/Rock 80s-90s"],
-      pages: [
-        {
-          page_num: 1,
-          content: "G  Em   C    D  (x2)\n\nG   Em  C           D\nDéjame, no juegues más conmigo.\nG   Em  C           D\nEsta vez en serio te lo digo.\nAm          D        G   Em\nTuviste una oportunidad\nAm          F        D\ny la dejaste escapar.\n\nG   Em  C           D\nDéjame, no vuelvas a mi lado.\nG   Em  C           D\nUna vez estuve equivocado,\nAm          D        G  Em\npero ahora todo eso pasó,\nAm          D        G   G7\nno queda nada de ese amor."
+          content: "G  Em  C  D\n(Líneas de prueba para verificar acordes y letra)\nG  Em  C  D"
         }
       ]
     }
