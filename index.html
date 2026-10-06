@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rechumada — Repertorio & PDF Builder</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- pdf-lib para construcción de PDF nativo con enlaces interactivos -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="logo-area">
+      <h1>🎸 RECHUMADA</h1>
+      <span class="subtitle">Setlist & PDF Generator</span>
+    </div>
+    <div class="header-actions">
+      <button id="btn-nueva-cancion" class="btn btn-primary">+ Nueva Canción</button>
+      <button id="btn-config" class="btn btn-secondary">⚙️ Ajustes GitHub</button>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <!-- PANEL IZQUIERDO: BIBLIOTECA -->
+    <section class="panel library-panel">
+      <div class="panel-header">
+        <h2>Biblioteca de Canciones</h2>
+        <span id="library-count" class="badge">0 temas</span>
+      </div>
+
+      <div class="search-filters">
+        <input type="text" id="search-input" placeholder="Buscar por título o artista...">
+        <div class="quick-filters">
+          <select id="filter-tag">
+            <option value="">Todos los estilos</option>
+            <option value="Pop/Rock 80s-90s">Pop/Rock 80s-90s</option>
+            <option value="Pop/Rock 2000s">Pop/Rock 2000s</option>
+            <option value="Rock Urbano">Rock Urbano</option>
+            <option value="Indie">Indie</option>
+            <option value="Rumba">Rumba</option>
+            <option value="Medley">Medleys</option>
+          </select>
+          <select id="filter-capo">
+            <option value="">Cualquier cejilla</option>
+            <option value="0">Sin Capo</option>
+            <option value="1">Capo 1</option>
+            <option value="2">Capo 2</option>
+            <option value="4">Capo 4</option>
+            <option value="5">Capo 5</option>
+            <option value="7">Capo 7</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="songs-list" class="songs-list">
+        <!-- Renderizado dinámico de temas -->
+      </div>
+    </section>
+
+    <!-- PANEL DERECHO: REPERTORIO DEL BOLO -->
+    <section class="panel setlist-panel">
+      <div class="setlist-config">
+        <div class="event-meta">
+          <input type="text" id="setlist-title" value="RECHUMADA — EN CONCIERTO" placeholder="Nombre del evento / Bolo">
+          <input type="text" id="setlist-subtitle" value="Repertorio Acústico" placeholder="Subtítulo o fecha">
+        </div>
+        <div class="setlist-stats">
+          <span id="stat-songs">0 temas</span>
+          <span class="stat-sep">•</span>
+          <span id="stat-duration">0 min</span>
+          <span class="stat-sep">•</span>
+          <span id="stat-pages">0 págs. PDF</span>
+        </div>
+      </div>
+
+      <div class="setlist-actions">
+        <button id="btn-save-setlist" class="btn btn-small">💾 Guardar Setlist</button>
+        <button id="btn-load-setlist" class="btn btn-small">📂 Cargar Setlist</button>
+        <button id="btn-clear-setlist" class="btn btn-small btn-danger">Vaciar</button>
+      </div>
+
+      <div id="setlist-items" class="setlist-items">
+        <div class="empty-state">
+          Haz clic en el botón <strong>+</strong> de cualquier canción de la biblioteca para añadirla al repertorio.
+        </div>
+      </div>
+
+      <div class="setlist-footer">
+        <button id="btn-generate-pdf" class="btn btn-success btn-large">
+          📄 Generar y Descargar PDF con Índice Interactivo
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL: AJUSTES GITHUB -->
+  <div id="modal-config" class="modal">
+    <div class="modal-content">
+      <h3>Configuración de GitHub</h3>
+      <p class="modal-desc">Introduce tus credenciales para que la web guarde canciones y setlists directamente en tu repositorio.</p>
+      
+      <label>Usuario / Organización de GitHub:</label>
+      <input type="text" id="gh-owner" placeholder="ej. tu-usuario">
+
+      <label>Nombre del repositorio:</label>
+      <input type="text" id="gh-repo" placeholder="ej. rechumada-repertorio">
+
+      <label>Personal Access Token (Fine-grained):</label>
+      <input type="password" id="gh-token" placeholder="github_pat_...">
+      <small>Se guarda únicamente en el navegador de este dispositivo (localStorage).</small>
+
+      <div class="modal-buttons">
+        <button id="btn-save-config" class="btn btn-primary">Guardar Ajustes</button>
+        <button id="btn-close-config" class="btn btn-secondary">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: NUEVA / EDITAR CANCIÓN -->
+  <div id="modal-song" class="modal">
+    <div class="modal-content modal-large">
+      <h3 id="song-modal-title">Añadir Canción al Repertorio</h3>
+      
+      <div class="form-grid">
+        <div>
+          <label>Título:</label>
+          <input type="text" id="song-title" placeholder="ej. DÉJAME">
+        </div>
+        <div>
+          <label>Artista / Grupo:</label>
+          <input type="text" id="song-artist" placeholder="ej. LOS SECRETOS">
+        </div>
+        <div>
+          <label>Cejilla (Capo):</label>
+          <select id="song-capo">
+            <option value="0">Sin cejilla (Al aire)</option>
+            <option value="1">Capo 1</option>
+            <option value="2">Capo 2</option>
+            <option value="3">Capo 3</option>
+            <option value="4">Capo 4</option>
+            <option value="5">Capo 5</option>
+            <option value="6">Capo 6</option>
+            <option value="7">Capo 7</option>
+          </select>
+        </div>
+        <div>
+          <label>Estilo / Etiqueta:</label>
+          <input type="text" id="song-tag" placeholder="ej. Pop/Rock 80s-90s, Rumba...">
+        </div>
+      </div>
+
+      <label>Anotaciones de directo (opcional):</label>
+      <input type="text" id="song-notes" placeholder="ej. SIN CAJÓN / ENTRA JUAN / ARPEGIO / TURUTA">
+
+      <div class="editor-header">
+        <label>Letra y Acordes (formato texto con acordes encima o LaCuerda):</label>
+        <button type="button" id="btn-add-page-break" class="btn btn-small">✂️ Insertar Salto de Página</button>
+      </div>
+      <textarea id="song-content" rows="14" placeholder="Pega aquí la letra con los acordes... Usa '---' o el botón superior para indicar dónde pasar de página cómodamente en directo."></textarea>
+
+      <div class="modal-buttons">
+        <button id="btn-submit-song" class="btn btn-primary">💾 Guardar Canción en GitHub</button>
+        <button id="btn-close-song" class="btn btn-secondary">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
