@@ -29,6 +29,11 @@ function initUI() {
   document.getElementById('btn-close-song').addEventListener('click', () => toggleModal('modal-song', false));
   document.getElementById('btn-submit-song').addEventListener('click', saveSongToGitHub);
 
+  // Botones de Setlist (Guardar / Cargar / Vaciar)
+  document.getElementById('btn-save-setlist').addEventListener('click', saveCurrentSetlist);
+  document.getElementById('btn-load-setlist').addEventListener('click', openLoadSetlistModal);
+  document.getElementById('btn-close-load-setlist').addEventListener('click', () => toggleModal('modal-load-setlist', false));
+
   document.getElementById('btn-add-page-break').addEventListener('click', () => {
     const txtArea = document.getElementById('song-content');
     const cursorPos = txtArea.selectionStart;
@@ -50,8 +55,10 @@ function initUI() {
 
 function toggleModal(id, show) {
   const modal = document.getElementById(id);
-  if (show) modal.classList.add('active');
-  else modal.classList.remove('active');
+  if (modal) {
+    if (show) modal.classList.add('active');
+    else modal.classList.remove('active');
+  }
 }
 
 // Carga del catálogo desde el repositorio público de GitHub
@@ -189,7 +196,195 @@ function renderSetlist() {
   document.getElementById('stat-pages').textContent = `PDF Dinámico`;
 }
 
-// Configuración de GitHub
+// -------------------------------------------------------------
+// GESTIÓN DE GUARDAR Y CARGAR SETLISTS (GITHUB / LOCALSTORAGE)
+// -------------------------------------------------------------
+async function saveCurrentSetlist() {
+  if (AppState.setlist.length === 0) {
+    alert('No puedes guardar un setlist vacío.');
+    return;
+  }
+
+  const rawTitle = document.getElementById('setlist-title').value.trim() || 'RECHUMADA';
+  const rawSubtitle = document.getElementById('setlist-subtitle').value.trim() || '';
+
+  const defaultName = rawTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const setlistName = prompt('Nombre para guardar este repertorio/plantilla:', defaultName);
+  if (!setlistName) return;
+
+  const setlistData = {
+    id: setlistName,
+    title: rawTitle,
+    subtitle: rawSubtitle,
+    saved_at: new Date().toISOString(),
+    song_ids: AppState.setlist.map(s => s.id)
+  };
+
+  // Guardar copia siempre en localStorage
+  let localSets = JSON.parse(localStorage.getItem('rechumada_local_setlists') || '{}');
+  localSets[setlistName] = setlistData;
+  localStorage.setItem('rechumada_local_setlists', JSON.stringify(localSets));
+
+  // Intentar guardar en GitHub si hay credenciales
+  if (AppState.ghConfig.token && AppState.ghConfig.owner && AppState.ghConfig.repo) {
+    try {
+      const path = `setlists/${setlistName}.json`;
+      const jsonStr = JSON.stringify(setlistData, null, 2);
+      const contentEncoded = btoa(unescape(encodeURIComponent(jsonStr)));
+      const url = `https://api.github.com/repos/${AppState.ghConfig.owner}/${AppState.ghConfig.repo}/contents/${path}`;
+
+      let sha = null;
+      const checkRes = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${AppState.ghConfig.token}` }
+      });
+      if (checkRes.ok) {
+        const fileData = await checkRes.json();
+        sha = fileData.sha;
+      }
+
+      const putRes = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${AppState.ghConfig.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: `Guardar setlist: ${setlistData.title}`,
+          content: contentEncoded,
+          ...(sha ? { sha } : {})
+        })
+      });
+
+      if (!putRes.ok) throw new Error('Error al sincronizar con GitHub');
+      alert(`¡Repertorio "${setlistData.title}" guardado en GitHub y en local!`);
+      return;
+    } catch (err) {
+      console.warn('Error guardando en GitHub:', err);
+      alert(`Guardado en este navegador (local), pero falló la sincronización con GitHub: ${err.message}`);
+      return;
+    }
+  }
+
+  alert(`¡Repertorio "${setlistData.title}" guardado en este navegador!`);
+}
+
+async function openLoadSetlistModal() {
+  const container = document.getElementById('saved-setlists-list');
+  container.innerHTML = '<div class="empty-state">Buscando repertorios guardados...</div>';
+  toggleModal('modal-load-setlist', true);
+
+  const availableSets = new Map();
+
+  // 1. Cargar locales
+  const localSets = JSON.parse(localStorage.getItem('rechumada_local_setlists') || '{}');
+  for (const [id, data] of Object.entries(localSets)) {
+    availableSets.set(id, { ...data, source: 'Local' });
+  }
+
+  // 2. Cargar remotos de GitHub si es posible
+  if (AppState.ghConfig.owner && AppState.ghConfig.repo) {
+    try {
+      const res = await fetch(`https://api.github.com/repos/${AppState.ghConfig.owner}/${AppState.ghConfig.repo}/contents/setlists`);
+      if (res.ok) {
+        const files = await res.json();
+        const jsonFiles = files.filter(f => f.name.endsWith('.json'));
+        for (const file of jsonFiles) {
+          const sRes = await fetch(file.download_url);
+          if (sRes.ok) {
+            const data = await sRes.json();
+            availableSets.set(data.id || file.name.replace('.json', ''), { ...data, source: 'GitHub' });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('No se pudieron obtener setlists de GitHub:', err);
+    }
+  }
+
+  container.innerHTML = '';
+  if (availableSets.size === 0) {
+    container.innerHTML = '<div class="empty-state">No hay repertorios guardados todavía.</div>';
+    return;
+  }
+
+  availableSets.forEach((item, id) => {
+    const card = document.createElement('div');
+    card.className = 'song-card';
+    card.style.marginBottom = '8px';
+    card.innerHTML = `
+      <div class="song-info">
+        <h4>${item.title || id}</h4>
+        <div class="song-meta">
+          <span>${item.subtitle || ''}</span>
+          <span>• ${item.song_ids ? item.song_ids.length : 0} temas</span>
+          <span class="badge">${item.source}</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 6px;">
+        <button class="btn btn-primary btn-small" onclick="loadSetlistById('${id}')">Cargar</button>
+        ${item.source === 'Local' ? `<button class="btn btn-danger btn-small" onclick="deleteLocalSetlist('${id}')">🗑️</button>` : ''}
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+window.loadSetlistById = function(id) {
+  // Buscar en local primero
+  const localSets = JSON.parse(localStorage.getItem('rechumada_local_setlists') || '{}');
+  let selected = localSets[id];
+
+  // Si no está en local, buscar en los ya listados
+  if (!selected) {
+    // Buscar en la lista activa de la ventana
+    alert('Cargando datos del repertorio...');
+  }
+
+  if (selected) {
+    applySetlistData(selected);
+    toggleModal('modal-load-setlist', false);
+  } else {
+    // Carga directa desde GitHub
+    fetch(`https://api.github.com/repos/${AppState.ghConfig.owner}/${AppState.ghConfig.repo}/contents/setlists/${id}.json`)
+      .then(r => r.json())
+      .then(f => fetch(f.download_url))
+      .then(r => r.json())
+      .then(data => {
+        applySetlistData(data);
+        toggleModal('modal-load-setlist', false);
+      })
+      .catch(err => alert('Error al cargar el setlist: ' + err.message));
+  }
+};
+
+function applySetlistData(data) {
+  document.getElementById('setlist-title').value = data.title || 'RECHUMADA';
+  document.getElementById('setlist-subtitle').value = data.subtitle || '';
+
+  AppState.setlist = [];
+  if (data.song_ids && Array.isArray(data.song_ids)) {
+    data.song_ids.forEach(sid => {
+      const match = AppState.songs.find(s => s.id === sid);
+      if (match) AppState.setlist.push({ ...match });
+    });
+  }
+
+  renderSetlist();
+  alert(`Repertorio "${data.title}" cargado con éxito.`);
+}
+
+window.deleteLocalSetlist = function(id) {
+  if (confirm(`¿Eliminar el repertorio "${id}" guardado en local?`)) {
+    let localSets = JSON.parse(localStorage.getItem('rechumada_local_setlists') || '{}');
+    delete localSets[id];
+    localStorage.setItem('rechumada_local_setlists', JSON.stringify(localSets));
+    openLoadSetlistModal();
+  }
+};
+
+// -------------------------------------------------------------
+// CONFIGURACIÓN DE GITHUB
+// -------------------------------------------------------------
 function openConfigModal() {
   document.getElementById('gh-owner').value = AppState.ghConfig.owner;
   document.getElementById('gh-repo').value = AppState.ghConfig.repo;
@@ -212,7 +407,9 @@ function saveGitHubConfig() {
   loadLibrary();
 }
 
-// Formulario y subida de canciones a GitHub
+// -------------------------------------------------------------
+// FORMULARIO Y SUBIDA DE CANCIONES A GITHUB
+// -------------------------------------------------------------
 function openNewSongModal() {
   document.getElementById('song-title').value = '';
   document.getElementById('song-artist').value = '';
@@ -309,7 +506,9 @@ async function saveSongToGitHub() {
   }
 }
 
-// Filtra caracteres fuera de WinAnsi / Latin-1 pero conserva tildes, eñes y signos
+// -------------------------------------------------------------
+// FILTRADO DE CARACTERES Y MAQUETACIÓN PDF
+// -------------------------------------------------------------
 function cleanPdfText(str) {
   if (!str) return '';
   return str
@@ -324,16 +523,14 @@ function cleanPdfText(str) {
     .replace(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g, '');
 }
 
-// Heurística para saber si una línea contiene predominantemente acordes
 function isChordLine(str) {
   if (!str) return false;
   const trimmed = cleanPdfText(str).trim();
   if (trimmed === '') return false;
-  if (/^\[.*\]$/.test(trimmed)) return false; // Etiquetas tipo [Verse]
+  if (/^\[.*\]$/.test(trimmed)) return false;
   return /^[A-G][b#]?(?:m|maj|min|dim|aug|sus|[0-9])*(?:\s+[A-G][b#]?(?:m|maj|min|dim|aug|sus|[0-9])*)*\s*$/.test(trimmed);
 }
 
-// Divide el contenido en estrofas/secciones
 function splitIntoStanzas(rawText) {
   const lines = rawText.split('\n');
   const stanzas = [];
@@ -364,7 +561,7 @@ function splitIntoStanzas(rawText) {
   return stanzas;
 }
 
-// MOTOR PDF: Paginación por estrofas con prevención de acordes huérfanos
+// Motor de generación de PDF con enlaces clicables y salto por estrofas
 async function generatePDF() {
   const btn = document.getElementById('btn-generate-pdf');
 
@@ -428,7 +625,6 @@ async function generatePDF() {
 
     const songTargets = [];
 
-    // Función para crear una nueva página de canción
     function createSongPage(sIdx, song, isContinued = false) {
       const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
       
@@ -523,24 +719,20 @@ async function generatePDF() {
           firstPageNum = pdfDoc.getPageCount();
         }
 
-        // Paginado por estrofas
         for (let stIdx = 0; stIdx < stanzas.length; stIdx++) {
           const stanzaLines = stanzas[stIdx];
-          const stanzaHeight = stanzaLines.length * LINE_HEIGHT + LINE_HEIGHT; // Estrofa + espacio
+          const stanzaHeight = stanzaLines.length * LINE_HEIGHT + LINE_HEIGHT;
 
-          // Si la estrofa completa no cabe y ya hemos escrito contenido en la página, saltamos antes de empezar la estrofa
           if (currentY - stanzaHeight < MARGIN_BOTTOM && currentY < PAGE_HEIGHT - 120) {
             const next = createSongPage(sIdx, song, true);
             currentPage = next.page;
             currentY = next.currentY;
           }
 
-          // Imprimir líneas de la estrofa
           for (let lIdx = 0; lIdx < stanzaLines.length; lIdx++) {
             const line = stanzaLines[lIdx];
             const isChord = isChordLine(line);
 
-            // Regla: Evitar que una línea de acordes quede huérfana al final de la página sin su letra
             if (isChord && (currentY - (2 * LINE_HEIGHT) < MARGIN_BOTTOM)) {
               const next = createSongPage(sIdx, song, true);
               currentPage = next.page;
@@ -564,7 +756,6 @@ async function generatePDF() {
             currentY -= LINE_HEIGHT;
           }
 
-          // Espacio en blanco entre estrofas consecutivas
           currentY -= (LINE_HEIGHT * 0.8);
         }
       }

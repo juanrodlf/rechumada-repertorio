@@ -45,8 +45,10 @@
             <option value="0">Sin Capo</option>
             <option value="1">Capo 1</option>
             <option value="2">Capo 2</option>
+            <option value="3">Capo 3</option>
             <option value="4">Capo 4</option>
             <option value="5">Capo 5</option>
+            <option value="6">Capo 6</option>
             <option value="7">Capo 7</option>
           </select>
         </div>
@@ -69,7 +71,7 @@
           <span class="stat-sep">•</span>
           <span id="stat-duration">0 min</span>
           <span class="stat-sep">•</span>
-          <span id="stat-pages">0 págs. PDF</span>
+          <span id="stat-pages">PDF Dinámico</span>
         </div>
       </div>
 
@@ -154,13 +156,29 @@
 
       <div class="editor-header">
         <label>Letra y Acordes (formato texto con acordes encima o LaCuerda):</label>
-        <button type="button" id="btn-add-page-break" class="btn btn-small">✂️ Insertar Salto de Página</button>
+        <button type="button" id="btn-add-page-break" class="btn btn-small">✂️ Insertar Salto Manual</button>
       </div>
-      <textarea id="song-content" rows="14" placeholder="Pega aquí la letra con los acordes... Usa '---' o el botón superior para indicar dónde pasar de página cómodamente en directo."></textarea>
+      <textarea id="song-content" rows="14" placeholder="Pega aquí la letra con los acordes... Puedes separar estrofas con un espacio en blanco y la web las paginará solas, o usar '---' para forzar un corte exacto."></textarea>
 
       <div class="modal-buttons">
         <button id="btn-submit-song" class="btn btn-primary">💾 Guardar Canción en GitHub</button>
         <button id="btn-close-song" class="btn btn-secondary">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CARGAR SETLIST -->
+  <div id="modal-load-setlist" class="modal">
+    <div class="modal-content">
+      <h3>Cargar Setlist Guardado</h3>
+      <p class="modal-desc">Selecciona un repertorio guardado para restaurar su orden y canciones.</p>
+      
+      <div id="saved-setlists-list" style="max-height: 280px; overflow-y: auto; margin-bottom: 16px;">
+        <!-- Lista dinámica de setlists -->
+      </div>
+
+      <div class="modal-buttons">
+        <button id="btn-close-load-setlist" class="btn btn-secondary">Cerrar</button>
       </div>
     </div>
   </div>
