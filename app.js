@@ -242,7 +242,6 @@ async function saveSongToGitHub() {
     return;
   }
 
-  // Si el usuario introduce saltos manuales se respetan, de lo contrario se guarda en un solo bloque
   const rawPages = content.split(/---(?:SALTO DE PÁGINA)?---/i);
   const pages = rawPages.map((pg, i) => ({
     page_num: i + 1,
@@ -325,7 +324,47 @@ function cleanPdfText(str) {
     .replace(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g, '');
 }
 
-// MOTOR PDF: Paginación automática continua con vínculos internos clicables
+// Heurística para saber si una línea contiene predominantemente acordes
+function isChordLine(str) {
+  if (!str) return false;
+  const trimmed = cleanPdfText(str).trim();
+  if (trimmed === '') return false;
+  if (/^\[.*\]$/.test(trimmed)) return false; // Etiquetas tipo [Verse]
+  return /^[A-G][b#]?(?:m|maj|min|dim|aug|sus|[0-9])*(?:\s+[A-G][b#]?(?:m|maj|min|dim|aug|sus|[0-9])*)*\s*$/.test(trimmed);
+}
+
+// Divide el contenido en estrofas/secciones
+function splitIntoStanzas(rawText) {
+  const lines = rawText.split('\n');
+  const stanzas = [];
+  let currentStanza = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isBlank = line.trim() === '';
+    const isSectionHeader = /^\[.*\]$/.test(line.trim());
+
+    if (isSectionHeader && currentStanza.length > 0) {
+      stanzas.push(currentStanza);
+      currentStanza = [line];
+    } else if (isBlank) {
+      if (currentStanza.length > 0) {
+        stanzas.push(currentStanza);
+        currentStanza = [];
+      }
+    } else {
+      currentStanza.push(line);
+    }
+  }
+
+  if (currentStanza.length > 0) {
+    stanzas.push(currentStanza);
+  }
+
+  return stanzas;
+}
+
+// MOTOR PDF: Paginación por estrofas con prevención de acordes huérfanos
 async function generatePDF() {
   const btn = document.getElementById('btn-generate-pdf');
 
@@ -341,7 +380,7 @@ async function generatePDF() {
 
   try {
     btn.disabled = true;
-    btn.textContent = '⏳ Paginando y maquetando PDF...';
+    btn.textContent = '⏳ Paginando estrofas y generando PDF...';
 
     const { PDFDocument, rgb, StandardFonts } = PDFLib;
     const pdfDoc = await PDFDocument.create();
@@ -353,11 +392,11 @@ async function generatePDF() {
 
     const PAGE_WIDTH = 595.28;
     const PAGE_HEIGHT = 841.89;
-    const MARGIN_BOTTOM = 45;
+    const MARGIN_BOTTOM = 48;
     const LINE_HEIGHT = 13.5;
     const FONT_SIZE = 9.5;
 
-    // 1. Crear página inicial de Índice (Página 1)
+    // 1. Página inicial de Índice (Pág. 1)
     const indexPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
     const indexPageRef = indexPage.ref;
 
@@ -389,7 +428,7 @@ async function generatePDF() {
 
     const songTargets = [];
 
-    // Función auxiliar para crear y maquetar una nueva página de canción
+    // Función para crear una nueva página de canción
     function createSongPage(sIdx, song, isContinued = false) {
       const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
       
@@ -423,7 +462,6 @@ async function generatePDF() {
         color: rgb(0.8, 0.4, 0.1)
       });
 
-      // Botón táctil para volver al índice
       const returnText = '< INDICE >';
       const returnX = PAGE_WIDTH - 110;
       const returnY = PAGE_HEIGHT - 52;
@@ -452,7 +490,6 @@ async function generatePDF() {
         console.warn('Vínculo al índice omitido:', linkErr);
       }
 
-      // Pie de página
       page.drawText(cleanPdfText(`Pág. ${pdfDoc.getPageCount()} | Rechumada`), {
         x: PAGE_WIDTH - 140,
         y: 22,
@@ -461,52 +498,74 @@ async function generatePDF() {
         color: rgb(0.6, 0.6, 0.6)
       });
 
-      return { page, startY: PAGE_HEIGHT - 85 };
+      return { page, currentY: PAGE_HEIGHT - 85 };
     }
 
-    // 2. Renderizado con paginación automática continua
+    // 2. Renderizado de canciones
     for (let sIdx = 0; sIdx < AppState.setlist.length; sIdx++) {
       const song = AppState.setlist[sIdx];
-      const blocks = (song.pages && song.pages.length > 0)
+      const explicitBlocks = (song.pages && song.pages.length > 0)
         ? song.pages
         : [{ page_num: 1, content: 'Sin contenido disponible' }];
 
       let firstPageRef = null;
       let firstPageNum = 0;
 
-      for (let bIdx = 0; bIdx < blocks.length; bIdx++) {
-        const rawContent = blocks[bIdx].content || '';
-        const lines = rawContent.split('\n');
+      for (let bIdx = 0; bIdx < explicitBlocks.length; bIdx++) {
+        const rawContent = explicitBlocks[bIdx].content || '';
+        const stanzas = splitIntoStanzas(rawContent);
 
         let isCont = bIdx > 0;
-        let { page: currentPage, startY: currentY } = createSongPage(sIdx, song, isCont);
+        let { page: currentPage, currentY } = createSongPage(sIdx, song, isCont);
 
         if (bIdx === 0) {
           firstPageRef = currentPage.ref;
           firstPageNum = pdfDoc.getPageCount();
         }
 
-        for (const line of lines) {
-          // Si la siguiente línea excede el margen inferior, se añade automáticamente otra página
-          if (currentY - LINE_HEIGHT < MARGIN_BOTTOM) {
+        // Paginado por estrofas
+        for (let stIdx = 0; stIdx < stanzas.length; stIdx++) {
+          const stanzaLines = stanzas[stIdx];
+          const stanzaHeight = stanzaLines.length * LINE_HEIGHT + LINE_HEIGHT; // Estrofa + espacio
+
+          // Si la estrofa completa no cabe y ya hemos escrito contenido en la página, saltamos antes de empezar la estrofa
+          if (currentY - stanzaHeight < MARGIN_BOTTOM && currentY < PAGE_HEIGHT - 120) {
             const next = createSongPage(sIdx, song, true);
             currentPage = next.page;
-            currentY = next.startY;
+            currentY = next.currentY;
           }
 
-          const sanitizedLine = cleanPdfText(line);
-          const trimmed = sanitizedLine.trim();
-          const isChord = /^[A-G][b#]?(?:m|maj|min|dim|aug|sus|[0-9])*(?:\s+[A-G][b#]?(?:m|maj|min|dim|aug|sus|[0-9])*)*\s*$/.test(trimmed);
+          // Imprimir líneas de la estrofa
+          for (let lIdx = 0; lIdx < stanzaLines.length; lIdx++) {
+            const line = stanzaLines[lIdx];
+            const isChord = isChordLine(line);
 
-          currentPage.drawText(sanitizedLine, {
-            x: 50,
-            y: currentY,
-            size: FONT_SIZE,
-            font: isChord ? fontMonoBold : fontMono,
-            color: isChord ? rgb(0.1, 0.45, 0.85) : rgb(0.15, 0.15, 0.15)
-          });
+            // Regla: Evitar que una línea de acordes quede huérfana al final de la página sin su letra
+            if (isChord && (currentY - (2 * LINE_HEIGHT) < MARGIN_BOTTOM)) {
+              const next = createSongPage(sIdx, song, true);
+              currentPage = next.page;
+              currentY = next.currentY;
+            } else if (currentY - LINE_HEIGHT < MARGIN_BOTTOM) {
+              const next = createSongPage(sIdx, song, true);
+              currentPage = next.page;
+              currentY = next.currentY;
+            }
 
-          currentY -= LINE_HEIGHT;
+            const sanitized = cleanPdfText(line);
+
+            currentPage.drawText(sanitized, {
+              x: 50,
+              y: currentY,
+              size: FONT_SIZE,
+              font: isChord ? fontMonoBold : fontMono,
+              color: isChord ? rgb(0.1, 0.45, 0.85) : rgb(0.15, 0.15, 0.15)
+            });
+
+            currentY -= LINE_HEIGHT;
+          }
+
+          // Espacio en blanco entre estrofas consecutivas
+          currentY -= (LINE_HEIGHT * 0.8);
         }
       }
 
@@ -519,7 +578,7 @@ async function generatePDF() {
       });
     }
 
-    // 3. Escribir enlaces clicables en la página 1 de Índice
+    // 3. Escribir enlaces clicables en la página de Índice
     let indexY = PAGE_HEIGHT - 120;
     const indexAnnots = [];
 
