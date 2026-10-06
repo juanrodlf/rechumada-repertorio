@@ -545,7 +545,7 @@ function isChordLine(str) {
 
   let chordCount = 0;
   for (const token of tokens) {
-    if (chordPattern.test(token) || /^\+?\d+$/.test(token) \vert{}\vert{} /^[xX]\d+$/.test(token)) {
+    if (chordPattern.test(token) || /^\+?\d+$/.test(token) || /^[xX]\d+$/.test(token)) {
       chordCount++;
     }
   }
