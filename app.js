@@ -318,11 +318,11 @@ async function saveSongToGitHub() {
 function cleanPdfText(str) {
   if (!str) return '';
   return str
-    .replace(/[áàäâ]/gi, 'a')
-    .replace(/[éèëê]/gi, 'e')
-    .replace(/[íìïî]/gi, 'i')
-    .replace(/[óòöô]/gi, 'o')
-    .replace(/[úùüû]/gi, 'u')
+    .replace(/[àäâ]/gi, 'a')
+    .replace(/[èëê]/gi, 'e')
+    .replace(/[ìïî]/gi, 'i')
+    .replace(/[òöô]/gi, 'o')
+    .replace(/[ùû]/gi, 'u')
     .replace(/[ñ]/g, 'n')
     .replace(/[Ñ]/g, 'N')
     .replace(/[¿¡]/g, '')
