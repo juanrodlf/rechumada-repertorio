@@ -1,0 +1,21 @@
+{
+  "id": "13-flaca",
+  "title": "FLACA",
+  "artist": "ANDRÉS CALAMARO",
+  "capo": 2,
+  "notes": "",
+  "duration_min": 3.5,
+  "tags": [
+    "Pop/Rock 80s-90s"
+  ],
+  "pages": [
+    {
+      "page_num": 1,
+      "content": "CAPO 2 \nIntro: G B7 Em C | G D G D \n[Estribillo] \n \n    G            B7 \nFlaca, no me claves \n         Em               C \nTus puñales, por la espalda \n           G            D \nTan profundo, no me duelen \n             G  D \nNo me hacen mal \n \n   G              B7 \nLejos, en el centro \n           Em         C \nDe la Tierra, las raíces \n      G              D \nDel amor, donde estaban \n      G  D \nQuedarán \n \n[Primera Parte] \n \nG \nEntre no me olvides \n      B7 \nMe deje nuestros abriles \n     Em \nOlvidados \n                    C \nEn el fondo del placard \n                   G \nDel cuarto de invitados \n                D \nEran tiempos dorados \n             G  D \nUn pasado mejor \n \n        G \nAunque casi me equivoco \n      B7 \nY te digo poco a poco \n        Em \nNo me mientas \n                   C \nNo me digas la verdad"
+    },
+    {
+      "page_num": 2,
+      "content": "G \nNo te quedes callada \n                D \nNo levantes la voz \n                G  D \nNi me pidas perdón \n \n        G \nAunque casi te confieso \n         B7 \nQue también he sido un perro \n     Em \nCompañero \n            C \nUn perro ideal \n                   G \nQue aprendió a ladrar \n                 D \nY a volver al hogar \n              G  D \nPara poder comer \n \n[Estribillo] \n \n    G            B7 \nFlaca, no me claves \n         Em               C \nTus puñales, por la espalda \n           G            D \nTan profundo, no me duelen \n             G  D \nNo me hacen mal \n \n   G              B7 \nLejos, en el centro \n           Em         C \nDe la tierra, las raíces \n      G              D \nDel amor, donde estaban \n      G  D \nQuedarán"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "50-estoy-enfermo",
+  "title": "ESTOY ENFERMO",
+  "artist": "PIGNOISE",
+  "capo": 0,
+  "notes": "",
+  "duration_min": 3.5,
+  "tags": [
+    "Pop/Rock 2000s"
+  ],
+  "pages": [
+    {
+      "page_num": 1,
+      "content": "[Intro] Am  F  C  E \n \nAm     F                C \nHace tiempo que estoy solo \n         E \nY que perdí la cabeza \nAm    F                C \nHace tiempo que estoy loco \n         E \nNo me lo tengas en cuenta \n \nF        G                 C \nSoy una especie de bicho raro \n       E           F \nQue se conserva en soledad \n      G                     C \nY aunque me apunto nunca disparo \n            E            F \nSiempre me suelo perdonar \n                            E \nY es que nadie me puede ayudar \n \n           Am \nQue estoy enfermo \nF         C           E \nQue nadie me puede curar \n     Am        F          C         E \nQue sólo quiero un poco de tranquilidad \n             F                  E \nQue estoy sintiendo cómo me muero por dentro"
+    },
+    {
+      "page_num": 2,
+      "content": "Am   F  C  E \nQue estoy enfermo \n \nAm F                 C \nY Cuando cierro los ojos \n          E \nTodo mi mundo da vueltas \nAm     F                 C            E \nIntentaré poco a poco recuperar la cabeza \nF             G           C         E \nSi por el cielo nunca he volado, mis alas no son verdad \nF           G             C          E               F \nY Cuando me impulso siempre resbalo, nunca consigo despegar \n                         E \nY es que nadie me puede ayudar \n \n           Am \nQue estoy enfermo \nF         C           E \nQue nadie me puede curar \n     Am        F          C         E \nQue sólo quiero un poco de tranquilidad \n             F                  E \nQue estoy sintiendo cómo me muero por dentro \n            F                  E \nQue estoy sintiendo cómo me muero por dentro \n \n( Am  F  C  E ) \n \n( Am  F  G  E )"
+    },
+    {
+      "page_num": 3,
+      "content": "F        G                 C \nSoy una especie de bicho raro \n       E           F \nQue se conserva en soledad \n      G                     C \nY aunque me apunto nunca disparo \n            E            F \nSiempre me suelo perdonar \n                            E \nY es que nadie me puede ayudar \n \n           Am \nQue estoy enfermo \nF         C           E \nQue nadie me puede curar \n     Am        F          C         E \nQue sólo quiero un poco de tranquilidad \n \n         Am \nQue estoy enfermo \nF         C           E \nQue nadie me puede curar \n     Am        F          C         E \nQue sólo quiero un poco de tranquilidad \n             F                  E \nQue estoy sintiendo cómo me muero por dentro \n            F                  E \nQue estoy sintiendo cómo me muero por dentro \n         Am \nQue estoy enfermo"
+    }
+  ]
+}

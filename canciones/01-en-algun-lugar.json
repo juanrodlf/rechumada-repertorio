@@ -1,0 +1,25 @@
+{
+  "id": "01-en-algun-lugar",
+  "title": "EN ALGÚN LUGAR",
+  "artist": "DUNCAN DHU",
+  "capo": 0,
+  "notes": "",
+  "duration_min": 3.5,
+  "tags": [
+    "Pop/Rock 80s-90s"
+  ],
+  "pages": [
+    {
+      "page_num": 1,
+      "content": "INTRO [Em G D]  x 2 \n      [Em Bm C G D Em Bm C] \n      [G D Am C] x 2 \n \nEm    G     D          Em      G D Em \nEn algun lugar de un gran pais \n     G     D     Em  G D Em   \nolvidaron construir \n      G      D      Em        G D Em \nun lugar donde no queme el sol \n      G            D    Em  G D Em \ny al nacer no haya que morir \n \n       Bm \nY en la sombra \n  C            G   D Em \nmueren genios sin saber \n       Bm \nde su magia \n C \nconcedida sin pedirlo \n                   G \nmucho tiempo antes de nacer \n \n[G D Am C] x 2"
+    },
+    {
+      "page_num": 2,
+      "content": "G               D          Am \nNo hay camino que, llegue hasta aqui  \n    C               G \ny luego pretenda salir \n            D      Am \ncon el fuego de el atardecer \nC              [Em G D] x 4  Em \narde la hierba \n \nEm    G     D          Em      G  D Em \nEn algun lugar de un gran pais \n     G     D     Em  G  D  Em \nolvidaron construir \n      G      D      Em        G D Em \nun lugar donde no queme el sol \n      G            D    Em  G D Em \ny al nacer no haya que morir \n \n      Bm \nUn silbido, \n  C             G  D  Em \ncruza el pueblo y se ve, \n      Bm \na un jinete \n  C \nque se marcha con el viento  \n                         G \nmientras grita que no va a volver"
+    },
+    {
+      "page_num": 3,
+      "content": "D          Am \nY la tierra aqui es de otro color  \n    C                G \nel polvo no te deja ver \n            D        Am \nlos hombres ya no saben si lo son  \n C                 G \npero lo quieren creer  \n            D       Am \nlas madres que ya no saben llorar \n C                  G      \nven a sus hijos partir \n             D        Am \nla tristeza aqui no tiene lugar \n  C                   [G   D  Am  C] x 4  Em \ncuando lo triste es vivir (NA NA NARA NA NA…)"
+    }
+  ]
+}
