@@ -39,7 +39,7 @@ function initUI() {
     const cursorPos = txtArea.selectionStart;
     const textBefore = txtArea.value.substring(0, cursorPos);
     const textAfter = txtArea.value.substring(cursorPos);
-    txtArea.value = textBefore + '\n--- SALTO DE PÁGINA ---\n' + textAfter;
+    txtArea.value = textBefore + '\n--- SALTO MANUAL ---\n' + textAfter;
     txtArea.focus();
   });
 
@@ -61,7 +61,7 @@ function toggleModal(id, show) {
   }
 }
 
-// Carga del catálogo desde el repositorio público de GitHub
+// Carga del catálogo desde GitHub o respaldo local
 async function loadLibrary() {
   const libraryContainer = document.getElementById('songs-list');
   libraryContainer.innerHTML = '<div class="empty-state">Cargando canciones...</div>';
@@ -133,7 +133,6 @@ function renderLibrary() {
   });
 }
 
-// Lógica de Setlist
 window.addToSetlist = function(songId) {
   const song = AppState.songs.find(s => s.id === songId);
   if (!song) return;
@@ -197,7 +196,7 @@ function renderSetlist() {
 }
 
 // -------------------------------------------------------------
-// GESTIÓN DE GUARDAR Y CARGAR SETLISTS (GITHUB / LOCALSTORAGE)
+// GESTIÓN DE GUARDAR Y CARGAR SETLISTS
 // -------------------------------------------------------------
 async function saveCurrentSetlist() {
   if (AppState.setlist.length === 0) {
@@ -427,7 +426,7 @@ async function saveSongToGitHub() {
     return;
   }
 
-  const rawPages = content.split(/---(?:SALTO DE PÁGINA)?---/i);
+  const rawPages = content.split(/---(?:SALTO MANUAL)?---/i);
   const pages = rawPages.map((pg, i) => ({
     page_num: i + 1,
     content: pg.trim()
@@ -495,7 +494,7 @@ async function saveSongToGitHub() {
 }
 
 // -------------------------------------------------------------
-// FILTRADO DE CARACTERES Y MAQUETACIÓN PDF
+// FILTRADO DE CARACTERES Y MOTOR DE PAGINACIÓN INTELIGENTE
 // -------------------------------------------------------------
 function cleanPdfText(str) {
   if (!str) return '';
@@ -511,15 +510,31 @@ function cleanPdfText(str) {
     .replace(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g, '');
 }
 
+// Detección exhaustiva de acordes (incluye notación española DO/RE/MI..., sostenidos, bemoles, 7, m, sus, +7)
 function isChordLine(str) {
   if (!str) return false;
-  const trimmed = cleanPdfText(str).trim();
+  const trimmed = str.trim();
   if (trimmed === '') return false;
-  if (/^\[.*\]$/.test(trimmed)) return false;
-  return /^[A-G][b#]?(?:m|maj|min|dim|aug|sus|[0-9])*(?:\s+[A-G][b#]?(?:m|maj|min|dim|aug|sus|[0-9])*)*\s*$/.test(trimmed);
+  if (/^\[.*\]$/.test(trimmed)) return false; // Encabezados tipo [Intro], [Estribillo]
+
+  // Tokens de acordes anglosajones y latinos
+  const chordPattern = /^(?:[A-G]|DO|RE|MI|FA|SOL|LA|SI)(?:[b#])?(?:m|min|maj|dim|aug|sus|[0-9]|\+[0-9]|\/[A-G]|\/[a-g])*$/i;
+  const tokens = trimmed.split(/[\s\-\|\(\)\*\:\,]+/).filter(t => t.length > 0);
+
+  if (tokens.length === 0) return false;
+
+  let chordCount = 0;
+  for (const token of tokens) {
+    if (chordPattern.test(token) || /^\+?\d+$/.test(token) \vert{}\vert{} /^[xX]\d+$/.test(token)) {
+      chordCount++;
+    }
+  }
+
+  // Si al menos el 70% de las palabras son acordes, es una línea de acordes
+  return (chordCount / tokens.length) >= 0.7;
 }
 
-// Motor de generación de PDF con máximo aprovechamiento de espacio y protección antipartición acorde-letra
+// Generador de PDF con llenado continuo sin huecos y protección Acorde + Letra
 async function generatePDF() {
   const btn = document.getElementById('btn-generate-pdf');
 
@@ -535,7 +550,7 @@ async function generatePDF() {
 
   try {
     btn.disabled = true;
-    btn.textContent = '⏳ Optimizando espacio y generando PDF...';
+    btn.textContent = '⏳ Optimizando páginas y generando PDF...';
 
     const { PDFDocument, rgb, StandardFonts } = PDFLib;
     const pdfDoc = await PDFDocument.create();
@@ -547,8 +562,8 @@ async function generatePDF() {
 
     const PAGE_WIDTH = 595.28;
     const PAGE_HEIGHT = 841.89;
-    const MARGIN_BOTTOM = 40; // Margen ajustado para exprimir al máximo la hoja
-    const LINE_HEIGHT = 13.5;
+    const MARGIN_BOTTOM = 38; // Límite inferior maximizado
+    const LINE_HEIGHT = 13.0; // Espaciado compacto y legible
     const FONT_SIZE = 9.5;
 
     // 1. Página inicial de Índice (Pág. 1)
@@ -646,7 +661,7 @@ async function generatePDF() {
 
       page.drawText(cleanPdfText(`Pág. ${pdfDoc.getPageCount()} | Rechumada`), {
         x: PAGE_WIDTH - 140,
-        y: 22,
+        y: 20,
         size: 8,
         font: fontRegular,
         color: rgb(0.6, 0.6, 0.6)
@@ -655,78 +670,105 @@ async function generatePDF() {
       return { page, currentY: PAGE_HEIGHT - 85 };
     }
 
-    // 2. Renderizado de canciones aprovechando todo el espacio disponible
+    // 2. Renderizado de cada canción
     for (let sIdx = 0; sIdx < AppState.setlist.length; sIdx++) {
       const song = AppState.setlist[sIdx];
-      const explicitBlocks = (song.pages && song.pages.length > 0)
-        ? song.pages
-        : [{ page_num: 1, content: 'Sin contenido disponible' }];
 
-      let firstPageRef = null;
-      let firstPageNum = 0;
+      // Unificar todo el texto de la canción sin saltos artificiales heredados
+      let rawText = '';
+      if (song.pages && song.pages.length > 0) {
+        rawText = song.pages.map(p => p.content || '').join('\n');
+      } else {
+        rawText = 'Sin contenido disponible';
+      }
 
-      for (let bIdx = 0; bIdx < explicitBlocks.length; bIdx++) {
-        const rawContent = explicitBlocks[bIdx].content || '';
-        const rawLines = rawContent.split('\n');
+      const allLines = rawText.split('\n');
 
-        let isCont = bIdx > 0;
-        let { page: currentPage, currentY } = createSongPage(sIdx, song, isCont);
+      let { page: currentPage, currentY } = createSongPage(sIdx, song, false);
+      const firstPageRef = currentPage.ref;
+      const firstPageNum = pdfDoc.getPageCount();
 
-        if (bIdx === 0) {
-          firstPageRef = currentPage.ref;
-          firstPageNum = pdfDoc.getPageCount();
+      let i = 0;
+      while (i < allLines.length) {
+        const line = allLines[i];
+
+        // Omitir líneas vacías al principio de una hoja
+        if (line.trim() === '' && currentY >= PAGE_HEIGHT - 90) {
+          i++;
+          continue;
         }
 
-        let l = 0;
-        while (l < rawLines.length) {
-          const currentLine = rawLines[l];
-          const isChord = isChordLine(currentLine);
+        // Si el usuario metió explícitamente una marca manual, salta de página
+        if (/^---(?:\s*SALTO MANUAL\s*)?---$/i.test(line.trim())) {
+          const next = createSongPage(sIdx, song, true);
+          currentPage = next.page;
+          currentY = next.currentY;
+          i++;
+          continue;
+        }
 
-          // Si es una línea de acordes, comprobamos si le sigue una línea de letra
-          let nextLineIsLyric = false;
-          if (isChord && l + 1 < rawLines.length) {
-            const nextLine = rawLines[l + 1];
-            // La siguiente línea cuenta como letra si no está vacía y no es otra fila de acordes ni encabezado
-            if (nextLine.trim() !== '' && !isChordLine(nextLine) && !/^\[.*\]$/.test(nextLine.trim())) {
-              nextLineIsLyric = true;
-            }
+        const isChord = isChordLine(line);
+
+        // Comprobar si la siguiente línea es la frase de letra correspondiente
+        let nextLineIsLyric = false;
+        let nextLine = null;
+        if (isChord && i + 1 < allLines.length) {
+          nextLine = allLines[i + 1];
+          if (nextLine.trim() !== '' && !isChordLine(nextLine) && !/^\[.*\]$/.test(nextLine.trim())) {
+            nextLineIsLyric = true;
+          }
+        }
+
+        // Si es una línea de acordes con su letra asociada:
+        if (isChord && nextLineIsLyric) {
+          // Si no caben las dos juntas en el espacio que queda, saltan ambas a la siguiente página
+          if (currentY - (2 * LINE_HEIGHT) < MARGIN_BOTTOM) {
+            const next = createSongPage(sIdx, song, true);
+            currentPage = next.page;
+            currentY = next.currentY;
           }
 
-          // REGLA: Si la línea de acordes tiene letra asociada y no caben ambas, saltar antes del acorde
-          if (isChord && nextLineIsLyric) {
-            if (currentY - (2 * LINE_HEIGHT) < MARGIN_BOTTOM) {
-              const next = createSongPage(sIdx, song, true);
-              currentPage = next.page;
-              currentY = next.currentY;
-            }
-          } else {
-            // Línea normal (letra, espacio o encabezado): salta solo si no cabe esa misma línea
-            if (currentY - LINE_HEIGHT < MARGIN_BOTTOM) {
-              const next = createSongPage(sIdx, song, true);
-              currentPage = next.page;
-              currentY = next.currentY;
-            }
-          }
-
-          // Si es una línea vacía al principio de una página nueva, la omitimos para no desperdiciar la cabecera
-          if (currentLine.trim() === '' && currentY >= PAGE_HEIGHT - 90) {
-            l++;
-            continue;
-          }
-
-          const sanitized = cleanPdfText(currentLine);
-
-          currentPage.drawText(sanitized, {
+          // Imprimir acordes
+          currentPage.drawText(cleanPdfText(line), {
             x: 50,
             y: currentY,
             size: FONT_SIZE,
-            font: isChord ? fontMonoBold : fontMono,
-            color: isChord ? rgb(0.1, 0.45, 0.85) : rgb(0.15, 0.15, 0.15)
+            font: fontMonoBold,
+            color: rgb(0.1, 0.45, 0.85)
           });
-
           currentY -= LINE_HEIGHT;
-          l++;
+
+          // Imprimir letra inmediatamente después
+          currentPage.drawText(cleanPdfText(nextLine), {
+            x: 50,
+            y: currentY,
+            size: FONT_SIZE,
+            font: fontMono,
+            color: rgb(0.15, 0.15, 0.15)
+          });
+          currentY -= LINE_HEIGHT;
+
+          i += 2; // Avanzar ambas líneas procesadas juntas
+          continue;
         }
+
+        // Línea individual (letra suelta, espacio o cabecera de sección):
+        if (currentY - LINE_HEIGHT < MARGIN_BOTTOM) {
+          const next = createSongPage(sIdx, song, true);
+          currentPage = next.page;
+          currentY = next.currentY;
+        }
+
+        currentPage.drawText(cleanPdfText(line), {
+          x: 50,
+          y: currentY,
+          size: FONT_SIZE,
+          font: isChord ? fontMonoBold : fontMono,
+          color: isChord ? rgb(0.1, 0.45, 0.85) : rgb(0.15, 0.15, 0.15)
+        });
+
+        currentY -= LINE_HEIGHT;
+        i++;
       }
 
       songTargets.push({
@@ -738,7 +780,7 @@ async function generatePDF() {
       });
     }
 
-    // 3. Escribir enlaces clicables en la página de Índice
+    // 3. Escribir enlaces clicables en la página 1 de Índice
     let indexY = PAGE_HEIGHT - 120;
     const indexAnnots = [];
 
