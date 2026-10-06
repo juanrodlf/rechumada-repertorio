@@ -477,7 +477,7 @@ async function saveSongToGitHub() {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        message: `Añadir canción: ${songData.title}`,
+        message: `Añadir canción: ${songData.title} [skip ci]`,
         content: contentEncoded,
         ...(sha ? { sha } : {})
       })
