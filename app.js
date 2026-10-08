@@ -581,9 +581,9 @@ async function generatePDF() {
 
     const PAGE_WIDTH = 595.28;
     const PAGE_HEIGHT = 841.89;
-    const MARGIN_BOTTOM = 38;
-    const LINE_HEIGHT = 13.0;
-    const FONT_SIZE = 9.5;
+    const MARGIN_BOTTOM = 40;
+    const LINE_HEIGHT = 15.5;
+    const FONT_SIZE = 12;
 
     // 1. Página inicial de Índice (Pág. 1)
     const indexPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
